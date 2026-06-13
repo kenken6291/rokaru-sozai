@@ -1,0 +1,81 @@
+// firestore.rules
+// ──────────────────────────────────────────────────────────────
+// Firestore Security Rules
+//
+// 方針:
+//   - 読み取り: 誰でも可（公開図鑑のため）
+//   - 書き込み: 匿名認証済みユーザーのみ
+//   - 削除:    投稿者本人（uid一致）のみ
+//   - フィールド検証: 必須項目・型・文字数を強制
+// ──────────────────────────────────────────────────────────────
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /items/{itemId} {
+
+      // ── 読み取り: 全員OK ──────────────────────────────────
+      allow read: if true;
+
+      // ── 新規作成: 認証済み & バリデーション ──────────────
+      allow create: if
+        // 匿名認証含むログイン済みユーザー
+        request.auth != null
+
+        // 投稿者UIDは自分自身のUIDであること（なりすまし防止）
+        && request.resource.data.uid == request.auth.uid
+
+        // 必須フィールドが揃っているか
+        && request.resource.data.keys().hasAll([
+             'itemName', 'storeName', 'region',
+             'category', 'rating', 'uid', 'createdAt'
+           ])
+
+        // 文字数バリデーション
+        && request.resource.data.itemName  is string
+        && request.resource.data.itemName.size()  >= 1
+        && request.resource.data.itemName.size()  <= 60
+
+        && request.resource.data.storeName is string
+        && request.resource.data.storeName.size() >= 1
+        && request.resource.data.storeName.size() <= 60
+
+        && request.resource.data.region    is string
+        && request.resource.data.region    in [
+             '北海道・東北','関東','中部・東海',
+             '近畿','中国・四国','九州・沖縄'
+           ]
+
+        && request.resource.data.category  is string
+        && request.resource.data.category  in [
+             '惣菜','銘菓','珍味','飲み物','その他'
+           ]
+
+        && request.resource.data.rating    is int
+        && request.resource.data.rating    >= 1
+        && request.resource.data.rating    <= 5
+
+        // comment は任意だが存在する場合は200文字以内
+        && (
+             !('comment' in request.resource.data)
+             || (
+                  request.resource.data.comment is string
+                  && request.resource.data.comment.size() <= 210
+                )
+           )
+
+        // photoURL / storagePath は使用しない（Storageなし版）
+        && !('photoURL'    in request.resource.data)
+        && !('storagePath' in request.resource.data);
+
+      // ── 更新: 不可（今回は編集機能なし）──────────────────
+      allow update: if false;
+
+      // ── 削除: 投稿者本人のみ ─────────────────────────────
+      allow delete: if
+        request.auth != null
+        && resource.data.uid == request.auth.uid;
+    }
+  }
+}
