@@ -243,6 +243,7 @@ async function handleFormSubmit(e) {
     category:  sanitize(document.querySelector('input[name="category"]:checked')?.value ?? "その他"),
     rating:    parseInt(document.getElementById("ratingValue").value, 10) || 3,
     comment:   sanitize(document.getElementById("itemComment").value.trim()),
+    storeUrl:  sanitize(document.getElementById("storeUrl").value.trim()),
   };
 
   try {
@@ -458,6 +459,17 @@ async function renderDetailBody(item) {
   const storeEl = document.createElement("p"); storeEl.className = "detail-store";
   storeEl.textContent = `🏪 ${desanitize(item.storeName)}`;
   body.appendChild(storeEl);
+
+  // 店舗リンク
+  if (item.storeUrl) {
+    const link = document.createElement("a");
+    link.className   = "detail-store-link";
+    link.href        = desanitize(item.storeUrl);
+    link.target      = "_blank";
+    link.rel         = "noopener noreferrer";
+    link.textContent = "🔗 お店のページを見る";
+    body.appendChild(link);
+  }
 
   if (item.comment) {
     const commentEl = document.createElement("p"); commentEl.className = "detail-comment";
