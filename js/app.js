@@ -81,11 +81,15 @@ async function init() {
   const firebaseOk = await loadFirebaseService();
 
   if (firebaseOk) {
-    // Firestoreをリアルタイム購読
+    // Firestoreをリアルタイム購読（初回コールバックでローディングを解除）
+    let firstLoad = true;
     fbService.subscribeItems((items) => {
-      state.items    = items;
+      state.items     = items;
       state.isLoading = false;
-      setLoadingUI(false);
+      if (firstLoad) {
+        firstLoad = false;
+        setLoadingUI(false);
+      }
       renderCards();
     });
     updateAuthBadge();
