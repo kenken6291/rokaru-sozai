@@ -3,9 +3,9 @@
  * ──────────────────────────────────────────────────────────────
  * セキュリティ方針:
  *   - FIREBASE_ENABLED=true  → Firestore + 匿名認証（写真なし版）
- *   - FIREBASE_ENABLED=false → LocalStorage フォールバック（設定不要）
+ *   - FIREBASE_ENABLED=false → LocalStorage フォールバック
  *   - XSS対策: createElement + textContent ベースのDOM構築
- *   - 投稿者UID照合により自分の投稿のみ削除可能
+ *   - 投稿者UID照合により自分の投稿のみ編集・削除可能
  * ──────────────────────────────────────────────────────────────
  */
 
@@ -24,13 +24,14 @@ const CATEGORY_EMOJI = {
    アプリ状態
    ============================================================ */
 let state = {
-  items:       [],
-  filterTag:   "all",
-  searchQuery: "",
-  sortOrder:   "newest",
-  currentUid:  null,
-  useFirebase: false,
-  isLoading:   true,
+  items:        [],
+  filterTag:    "all",
+  searchQuery:  "",
+  sortOrder:    "newest",
+  currentUid:   null,
+  useFirebase:  false,
+  isLoading:    true,
+  editingId:    null,   // 編集中のアイテムID（nullなら新規）
 };
 
 /* ============================================================
@@ -53,22 +54,14 @@ async function loadFirebaseService() {
 }
 
 /* ============================================================
-   LocalStorage ヘルパー（フォールバック用）
+   LocalStorage ヘルパー
    ============================================================ */
 function lsLoad() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
 }
-
 function lsSave(items) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch (e) {
-    console.warn("LocalStorage 保存失敗:", e);
-    showToast("⚠️ 保存領域が不足しています");
-  }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+  catch (e) { showToast("⚠️ 保存領域が不足しています"); }
 }
 
 /* ============================================================
@@ -81,17 +74,14 @@ async function init() {
   const firebaseOk = await loadFirebaseService();
 
   if (firebaseOk) {
-    // Firestoreをリアルタイム購読
-    // onSnapshot は初回データ取得時に必ず1回コールバックされる
     fbService.subscribeItems((items) => {
       state.items     = items;
       state.isLoading = false;
-      setLoadingUI(false);   // ローディングを消す
+      setLoadingUI(false);
       renderCards();
     });
     updateAuthBadge();
   } else {
-    // LocalStorageから読み込み
     const stored = lsLoad();
     state.items    = stored ?? [...SAMPLE_ITEMS];
     state.isLoading = false;
@@ -104,24 +94,19 @@ async function init() {
    ローディングUI
    ============================================================ */
 function setLoadingUI(loading) {
-  const indicator = document.getElementById("loadingIndicator");
-  indicator.hidden = !loading;
+  document.getElementById("loadingIndicator").hidden = !loading;
 }
 
 function updateAuthBadge() {
   const badge = document.getElementById("authBadge");
-  if (!badge) return;
-  if (state.useFirebase && state.currentUid) {
-    badge.hidden = false;
-    badge.title  = `UID: ${state.currentUid}`;
-  }
+  if (badge && state.useFirebase && state.currentUid) badge.hidden = false;
 }
 
 /* ============================================================
    イベントバインド
    ============================================================ */
 function bindEvents() {
-  document.getElementById("btnOpenPost").addEventListener("click", openPostModal);
+  document.getElementById("btnOpenPost").addEventListener("click", () => openPostModal());
   document.getElementById("btnClosePost").addEventListener("click", closePostModal);
   document.getElementById("btnCloseDetail").addEventListener("click", closeDetailModal);
 
@@ -131,7 +116,6 @@ function bindEvents() {
   document.getElementById("detailModal").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) closeDetailModal();
   });
-
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (!document.getElementById("postModal").hidden)   closePostModal();
@@ -139,10 +123,8 @@ function bindEvents() {
   });
 
   document.getElementById("searchInput").addEventListener("input", (e) => {
-    state.searchQuery = e.target.value.trim();
-    renderCards();
+    state.searchQuery = e.target.value.trim(); renderCards();
   });
-
   document.querySelectorAll(".tag-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.filterTag = btn.dataset.tag;
@@ -151,12 +133,9 @@ function bindEvents() {
       renderCards();
     });
   });
-
   document.getElementById("sortSelect").addEventListener("change", (e) => {
-    state.sortOrder = e.target.value;
-    renderCards();
+    state.sortOrder = e.target.value; renderCards();
   });
-
 
   initStarRating();
 
@@ -174,7 +153,6 @@ function initStarRating() {
   const stars = document.querySelectorAll(".star");
   let currentRating = 3;
   setStars(stars, currentRating);
-
   stars.forEach((star) => {
     const val = parseInt(star.dataset.value, 10);
     star.addEventListener("mouseenter", () => highlightStars(stars, val));
@@ -226,14 +204,15 @@ function validateForm() {
 }
 
 /* ============================================================
-   フォーム送信
+   フォーム送信（新規 & 編集共用）
    ============================================================ */
 async function handleFormSubmit(e) {
   e.preventDefault();
   if (!validateForm()) return;
 
-  const submitBtn = document.getElementById("btnSubmit");
-  submitBtn.disabled   = true;
+  const submitBtn  = document.getElementById("btnSubmit");
+  const isEditing  = state.editingId !== null;
+  submitBtn.disabled    = true;
   submitBtn.textContent = "⏳ 保存中...";
 
   const itemData = {
@@ -248,30 +227,34 @@ async function handleFormSubmit(e) {
 
   try {
     if (state.useFirebase) {
-      // ── Firebaseモード ──────────────────────────────
-      await fbService.addItem(itemData);
-      // subscribeItemsのコールバックで自動的にrenderCardsが呼ばれる
+      if (isEditing) {
+        await fbService.updateItem(state.editingId, itemData);
+      } else {
+        await fbService.addItem(itemData);
+      }
     } else {
-      // ── LocalStorageモード ──────────────────────────
-      const newItem = {
-        id:           crypto.randomUUID(),
-        ...itemData,
-        createdAt:    new Date().toISOString()
-      };
-      state.items.unshift(newItem);
+      if (isEditing) {
+        state.items = state.items.map(it =>
+          it.id === state.editingId ? { ...it, ...itemData } : it
+        );
+      } else {
+        state.items.unshift({
+          id: crypto.randomUUID(), ...itemData,
+          createdAt: new Date().toISOString()
+        });
+      }
       lsSave(state.items);
       renderCards();
     }
-
     closePostModal();
     resetForm();
-    showToast("📌 図鑑に登録しました！");
+    showToast(isEditing ? "✏️ 修正しました！" : "📌 図鑑に登録しました！");
   } catch (err) {
     console.error("保存エラー:", err);
     showToast("❌ 保存に失敗しました。もう一度お試しください");
   } finally {
     submitBtn.disabled    = false;
-    submitBtn.textContent = "📌 図鑑に登録する";
+    submitBtn.textContent = isEditing ? "✏️ 修正を保存する" : "📌 図鑑に登録する";
   }
 }
 
@@ -284,7 +267,7 @@ function sanitize(str) {
     .replace(/"/g,"&quot;").replace(/'/g,"&#x27;");
 }
 function desanitize(str) {
-  return String(str)
+  return String(str || "")
     .replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">")
     .replace(/&quot;/g,'"').replace(/&#x27;/g,"'");
 }
@@ -294,8 +277,16 @@ function resetForm() {
   document.getElementById("charCount").textContent = "0 / 200";
   document.getElementById("ratingValue").value     = 3;
   setStars(document.querySelectorAll(".star"), 3);
-  ["itemName","storeName","regionTag"].forEach(id => document.getElementById(id).classList.remove("is-error"));
-  ["itemNameError","storeNameError","regionTagError"].forEach(id => document.getElementById(id).textContent = "");
+  ["itemName","storeName","regionTag"].forEach(id =>
+    document.getElementById(id).classList.remove("is-error")
+  );
+  ["itemNameError","storeNameError","regionTagError"].forEach(id =>
+    document.getElementById(id).textContent = ""
+  );
+  // フォームを新規モードに戻す
+  state.editingId = null;
+  document.getElementById("postModalTitle").textContent = "新しく記録する";
+  document.getElementById("btnSubmit").textContent      = "📌 図鑑に登録する";
 }
 
 /* ============================================================
@@ -316,8 +307,34 @@ function closeModal(id) {
     document.body.style.overflow = "";
   }, { once: true });
 }
-const openPostModal   = () => openModal("postModal", "itemName");
-const closePostModal  = () => closeModal("postModal");
+
+function openPostModal(item = null) {
+  if (item) {
+    // 編集モード: フォームに既存値をセット
+    state.editingId = item.id;
+    document.getElementById("postModalTitle").textContent = "記録を修正する";
+    document.getElementById("btnSubmit").textContent      = "✏️ 修正を保存する";
+    document.getElementById("itemName").value    = desanitize(item.itemName);
+    document.getElementById("storeName").value   = desanitize(item.storeName);
+    document.getElementById("storeUrl").value    = desanitize(item.storeUrl ?? "");
+    document.getElementById("regionTag").value   = item.region;
+    document.getElementById("itemComment").value = desanitize(item.comment ?? "");
+    document.getElementById("charCount").textContent = `${desanitize(item.comment ?? "").length} / 200`;
+    // カテゴリ
+    const catRadio = document.querySelector(`input[name="category"][value="${item.category}"]`);
+    if (catRadio) catRadio.checked = true;
+    // 星評価
+    const rating = item.rating ?? 3;
+    document.getElementById("ratingValue").value = rating;
+    setStars(document.querySelectorAll(".star"), rating);
+  } else {
+    // 新規モード
+    resetForm();
+  }
+  openModal("postModal", "itemName");
+}
+
+const closePostModal   = () => { resetForm(); closeModal("postModal"); };
 const closeDetailModal = () => closeModal("detailModal");
 
 function openDetailModal(item) {
@@ -357,7 +374,6 @@ function renderCards() {
   const items   = getFilteredItems();
 
   grid.innerHTML = "";
-
   if (items.length === 0) {
     empty.hidden = false; countEl.textContent = ""; return;
   }
@@ -376,39 +392,34 @@ function buildCard(item) {
   const thumb = document.createElement("div");
   thumb.className = "card-thumb";
   const ph = document.createElement("div");
-  ph.className = "card-thumb-placeholder";
+  ph.className   = "card-thumb-placeholder";
   ph.textContent = CATEGORY_EMOJI[item.category] ?? "📦";
   thumb.appendChild(ph);
   const stamp = document.createElement("div");
-  stamp.className = "region-stamp"; stamp.dataset.region = item.region;
-  stamp.textContent = item.region.replace("・", "\n");
+  stamp.className    = "region-stamp"; stamp.dataset.region = item.region;
+  stamp.textContent  = item.region.replace("・", "\n");
   stamp.setAttribute("aria-hidden", "true");
   thumb.appendChild(stamp);
   card.appendChild(thumb);
 
   const body = document.createElement("div");
   body.className = "card-body";
-  const cat  = document.createElement("p");
-  cat.className = "card-category";
+  const cat   = document.createElement("p"); cat.className = "card-category";
   cat.textContent = `${CATEGORY_EMOJI[item.category]??'📦'} ${item.category}`;
-  const name = document.createElement("h3");
-  name.className = "card-name"; name.textContent = desanitize(item.itemName);
-  const store = document.createElement("p");
-  store.className = "card-store"; store.textContent = `🏪 ${desanitize(item.storeName)}`;
-  const stars = document.createElement("div");
-  stars.className = "card-stars";
+  const name  = document.createElement("h3"); name.className = "card-name";
+  name.textContent = desanitize(item.itemName);
+  const store = document.createElement("p"); store.className = "card-store";
+  store.textContent = `🏪 ${desanitize(item.storeName)}`;
+  const stars = document.createElement("div"); stars.className = "card-stars";
   stars.setAttribute("aria-label", `評価 ${item.rating} 点`);
   stars.innerHTML = buildStarsHTML(item.rating);
   body.append(cat, name, store, stars);
   card.appendChild(body);
 
-  // Firebaseモードでは同期アイコンを表示
   if (state.useFirebase) {
-    const syncDot = document.createElement("div");
-    syncDot.className = "sync-dot";
-    syncDot.title     = "クラウド同期済み";
-    syncDot.setAttribute("aria-hidden", "true");
-    card.appendChild(syncDot);
+    const dot = document.createElement("div"); dot.className = "sync-dot";
+    dot.title = "クラウド同期済み"; dot.setAttribute("aria-hidden", "true");
+    card.appendChild(dot);
   }
 
   const openDetail = () => openDetailModal(item);
@@ -429,20 +440,19 @@ function buildStarsHTML(rating) {
    詳細モーダル
    ============================================================ */
 async function renderDetailBody(item) {
-  const body     = document.getElementById("detailBody");
+  const body = document.getElementById("detailBody");
   body.innerHTML = "";
 
   // ヒーロー
-  const hero = document.createElement("div");
-  hero.className = "detail-hero";
-  const heroPh = document.createElement("div");
-  heroPh.className = "detail-hero-placeholder"; heroPh.textContent = CATEGORY_EMOJI[item.category] ?? "📦";
+  const hero   = document.createElement("div"); hero.className = "detail-hero";
+  const heroPh = document.createElement("div"); heroPh.className = "detail-hero-placeholder";
+  heroPh.textContent = CATEGORY_EMOJI[item.category] ?? "📦";
   hero.appendChild(heroPh);
   body.appendChild(hero);
 
   // メタ
-  const meta = document.createElement("div"); meta.className = "detail-meta";
-  const catEl = document.createElement("span"); catEl.className = "detail-category";
+  const meta    = document.createElement("div"); meta.className = "detail-meta";
+  const catEl   = document.createElement("span"); catEl.className = "detail-category";
   catEl.textContent = `${CATEGORY_EMOJI[item.category]??'📦'} ${item.category}`;
   const regionEl = document.createElement("span"); regionEl.className = "detail-region";
   regionEl.textContent = item.region;
@@ -452,7 +462,8 @@ async function renderDetailBody(item) {
   meta.append(catEl, regionEl, starsEl);
   body.appendChild(meta);
 
-  const nameEl = document.createElement("h3"); nameEl.className = "detail-name";
+  // 商品名・店舗名
+  const nameEl  = document.createElement("h3"); nameEl.className = "detail-name";
   nameEl.textContent = desanitize(item.itemName);
   body.appendChild(nameEl);
 
@@ -471,16 +482,16 @@ async function renderDetailBody(item) {
     body.appendChild(link);
   }
 
+  // コメント
   if (item.comment) {
     const commentEl = document.createElement("p"); commentEl.className = "detail-comment";
     commentEl.textContent = `"${desanitize(item.comment)}"`;
     body.appendChild(commentEl);
   }
 
+  // 投稿日
   const dateEl = document.createElement("p"); dateEl.className = "detail-date";
   dateEl.textContent = `記録日: ${formatDate(item.createdAt)}`;
-
-  // Firebase同期情報バッジ
   if (state.useFirebase) {
     const badge = document.createElement("span"); badge.className = "cloud-badge";
     badge.textContent = "☁️ クラウド同期済み";
@@ -488,21 +499,30 @@ async function renderDetailBody(item) {
   }
   body.appendChild(dateEl);
 
-  // 削除ボタン（自分の投稿か、LocalStorageモードのみ表示）
-  const canDelete = state.useFirebase
-    ? (item.uid === state.currentUid)
-    : true;
+  // 自分の投稿かどうか
+  const canEdit = state.useFirebase ? (item.uid === state.currentUid) : true;
 
-  if (canDelete) {
+  if (canEdit) {
+    // ボタン行
+    const btnRow = document.createElement("div"); btnRow.className = "detail-btn-row";
+
+    // 修正ボタン
+    const editBtn = document.createElement("button"); editBtn.className = "btn-edit";
+    editBtn.textContent = "✏️ 修正する";
+    editBtn.addEventListener("click", () => {
+      closeDetailModal();
+      setTimeout(() => openPostModal(item), 300);
+    });
+
+    // 削除ボタン
     const delBtn = document.createElement("button"); delBtn.className = "btn-delete";
-    delBtn.textContent = "🗑 この記録を削除";
+    delBtn.textContent = "🗑 削除";
     delBtn.addEventListener("click", async () => {
       if (!confirm(`「${desanitize(item.itemName)}」を削除しますか？`)) return;
       delBtn.disabled = true; delBtn.textContent = "⏳ 削除中...";
       try {
         if (state.useFirebase) {
           await fbService.deleteItem(item.id);
-          // subscribeItemsのコールバックで自動的に反映される
         } else {
           state.items = state.items.filter(it => it.id !== item.id);
           lsSave(state.items);
@@ -513,14 +533,16 @@ async function renderDetailBody(item) {
       } catch (err) {
         console.error("削除エラー:", err);
         showToast("❌ 削除に失敗しました");
-        delBtn.disabled = false; delBtn.textContent = "🗑 この記録を削除";
+        delBtn.disabled = false; delBtn.textContent = "🗑 削除";
       }
     });
-    body.appendChild(delBtn);
+
+    btnRow.append(editBtn, delBtn);
+    body.appendChild(btnRow);
   } else {
     const noteEl = document.createElement("p"); noteEl.className = "detail-date";
     noteEl.style.marginTop = "16px";
-    noteEl.textContent = "※ 他のユーザーの投稿は削除できません";
+    noteEl.textContent = "※ 他のユーザーの投稿は編集・削除できません";
     body.appendChild(noteEl);
   }
 }

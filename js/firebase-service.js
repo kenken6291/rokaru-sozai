@@ -20,7 +20,8 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
-  getDoc
+  getDoc,
+  updateDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 let _app        = null;
@@ -78,6 +79,15 @@ export async function addItem(itemData) {
     createdAt: serverTimestamp()
   });
   return docRef.id;
+}
+
+/** アイテムを更新する（編集） */
+export async function updateItem(docId, itemData) {
+  if (!_db) throw new Error("Firebase not initialized");
+  await updateDoc(doc(_db, COLLECTION, docId), {
+    ...itemData,
+    updatedAt: serverTimestamp()
+  });
 }
 
 /** アイテムを削除する */
