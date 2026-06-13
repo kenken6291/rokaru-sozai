@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ご当地スーパー・銘菓発掘図鑑</title>
+  <meta name="description" content="旅先で見つけたローカルスーパーの惣菜や地元の銘菓を記録・共有するアプリ" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="site-logo">
+        <span class="logo-icon">🗾</span>
+        <div class="logo-text">
+          <span class="logo-main">発掘図鑑</span>
+          <span class="logo-sub">ご当地スーパー・銘菓</span>
+        </div>
+      </div>
+      <button class="btn-post" id="btnOpenPost" aria-label="新しく記録する">
+        <span class="btn-post-icon">＋</span>
+        <span class="btn-post-label">記録する</span>
+      </button>
+      <div class="auth-badge" id="authBadge" hidden aria-label="クラウド同期中">☁️ 同期中</div>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="main-content">
+
+    <!-- 検索・フィルターバー -->
+    <section class="filter-bar" aria-label="検索・絞り込み">
+      <div class="search-wrap">
+        <span class="search-icon" aria-hidden="true">🔍</span>
+        <input
+          type="search"
+          id="searchInput"
+          class="search-input"
+          placeholder="商品名・店舗名・地域で検索..."
+          aria-label="検索キーワード"
+        />
+      </div>
+      <div class="tag-scroll" role="list" aria-label="地域タグで絞り込み">
+        <button class="tag-btn active" data-tag="all" role="listitem">すべて</button>
+        <button class="tag-btn" data-tag="北海道・東北" role="listitem">北海道・東北</button>
+        <button class="tag-btn" data-tag="関東" role="listitem">関東</button>
+        <button class="tag-btn" data-tag="中部・東海" role="listitem">中部・東海</button>
+        <button class="tag-btn" data-tag="近畿" role="listitem">近畿</button>
+        <button class="tag-btn" data-tag="中国・四国" role="listitem">中国・四国</button>
+        <button class="tag-btn" data-tag="九州・沖縄" role="listitem">九州・沖縄</button>
+      </div>
+      <div class="sort-wrap">
+        <label for="sortSelect" class="sort-label">並び順</label>
+        <select id="sortSelect" class="sort-select">
+          <option value="newest">新しい順</option>
+          <option value="oldest">古い順</option>
+          <option value="rating">評価順</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- カード一覧 -->
+    <section class="card-grid-section">
+      <p class="results-count" id="resultsCount" aria-live="polite"></p>
+      <div class="card-grid" id="cardGrid" role="list" aria-label="発掘アイテム一覧">
+        <!-- JS で動的生成 -->
+      </div>
+      <div class="empty-state" id="emptyState" hidden>
+        <span class="empty-icon">🔦</span>
+        <p class="empty-title">まだ発掘されていません</p>
+        <p class="empty-desc">「記録する」から最初の一品を登録してみましょう！</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==============================
+       投稿モーダル
+  ============================== -->
+  <div class="modal-overlay" id="postModal" role="dialog" aria-modal="true" aria-labelledby="postModalTitle" hidden>
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h2 class="modal-title" id="postModalTitle">新しく記録する</h2>
+        <button class="modal-close" id="btnClosePost" aria-label="閉じる">✕</button>
+      </div>
+      <form class="post-form" id="postForm" novalidate>
+
+        <!-- 商品名 -->
+        <div class="form-field">
+          <label class="form-label" for="itemName">商品名 <span class="badge-required">必須</span></label>
+          <input type="text" id="itemName" class="form-input" placeholder="例：いか天丼、ずんだ大福" maxlength="50" required />
+          <span class="form-error" id="itemNameError" role="alert"></span>
+        </div>
+
+        <!-- 店舗名 -->
+        <div class="form-field">
+          <label class="form-label" for="storeName">店舗名 <span class="badge-required">必須</span></label>
+          <input type="text" id="storeName" class="form-input" placeholder="例：マルナカ松山店、業務スーパー釧路店" maxlength="50" required />
+          <span class="form-error" id="storeNameError" role="alert"></span>
+        </div>
+
+        <!-- 地域タグ -->
+        <div class="form-field">
+          <label class="form-label" for="regionTag">地域 <span class="badge-required">必須</span></label>
+          <select id="regionTag" class="form-select" required>
+            <option value="">-- 地域を選んでください --</option>
+            <option value="北海道・東北">北海道・東北</option>
+            <option value="関東">関東</option>
+            <option value="中部・東海">中部・東海</option>
+            <option value="近畿">近畿</option>
+            <option value="中国・四国">中国・四国</option>
+            <option value="九州・沖縄">九州・沖縄</option>
+          </select>
+          <span class="form-error" id="regionTagError" role="alert"></span>
+        </div>
+
+        <!-- カテゴリ -->
+        <div class="form-field">
+          <label class="form-label">カテゴリ</label>
+          <div class="category-chips" role="group" aria-label="カテゴリ選択">
+            <label class="chip-label"><input type="radio" name="category" value="惣菜" class="chip-radio" /><span class="chip">🍱 惣菜</span></label>
+            <label class="chip-label"><input type="radio" name="category" value="銘菓" class="chip-radio" checked /><span class="chip">🍡 銘菓</span></label>
+            <label class="chip-label"><input type="radio" name="category" value="珍味" class="chip-radio" /><span class="chip">🐟 珍味</span></label>
+            <label class="chip-label"><input type="radio" name="category" value="飲み物" class="chip-radio" /><span class="chip">🧃 飲み物</span></label>
+            <label class="chip-label"><input type="radio" name="category" value="その他" class="chip-radio" /><span class="chip">📦 その他</span></label>
+          </div>
+        </div>
+
+        <!-- 星評価 -->
+        <div class="form-field">
+          <label class="form-label">おすすめ度</label>
+          <div class="star-rating" id="starRating" role="group" aria-label="評価を選択">
+            <button type="button" class="star" data-value="1" aria-label="★1">★</button>
+            <button type="button" class="star" data-value="2" aria-label="★2">★</button>
+            <button type="button" class="star" data-value="3" aria-label="★3">★</button>
+            <button type="button" class="star" data-value="4" aria-label="★4">★</button>
+            <button type="button" class="star" data-value="5" aria-label="★5">★</button>
+          </div>
+          <input type="hidden" id="ratingValue" value="3" />
+        </div>
+
+        <!-- コメント -->
+        <div class="form-field">
+          <label class="form-label" for="itemComment">ひとことレビュー <span class="badge-optional">任意</span></label>
+          <textarea id="itemComment" class="form-textarea" placeholder="例：甘さ控えめで上品な味。地元のおじいちゃんが大絶賛してた！" maxlength="200" rows="3"></textarea>
+          <span class="char-count" id="charCount">0 / 200</span>
+        </div>
+
+        <button type="submit" class="btn-submit" id="btnSubmit">📌 図鑑に登録する</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==============================
+       詳細モーダル
+  ============================== -->
+  <div class="modal-overlay" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle" hidden>
+    <div class="modal-sheet modal-sheet--detail">
+      <div class="modal-header">
+        <h2 class="modal-title" id="detailModalTitle">詳細</h2>
+        <button class="modal-close" id="btnCloseDetail" aria-label="閉じる">✕</button>
+      </div>
+      <div class="detail-body" id="detailBody">
+        <!-- JS で動的生成 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- ローディングインジケーター -->
+  <div class="loading-indicator" id="loadingIndicator" aria-label="読み込み中" role="status">
+    <div class="loading-spinner"></div>
+    <p class="loading-text">データを読み込んでいます…</p>
+  </div>
+
+  <!--
+    ══════════════════════════════════════════════════════════
+    スクリプト読み込み順（重要）
+      1. firebase-config.js  … FIREBASE_CONFIG と FIREBASE_ENABLED を定義
+      2. data.js             … SAMPLE_ITEMS を定義
+      3. app.js (module)     … firebase-service.js を動的 import
+    ══════════════════════════════════════════════════════════
+  -->
+  <script src="js/firebase-config.js"></script>
+  <script src="js/data.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
