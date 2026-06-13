@@ -94,7 +94,10 @@ async function init() {
    ローディングUI
    ============================================================ */
 function setLoadingUI(loading) {
-  document.getElementById("loadingIndicator").hidden = !loading;
+  const el = document.getElementById("loadingIndicator");
+  if (!el) return;
+  el.hidden = !loading;
+  el.style.display = loading ? "flex" : "none";
 }
 
 function updateAuthBadge() {
