@@ -690,6 +690,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ── ローディングインジケーター ── */
+.loading-indicator[hidden] { display: none !important; }
 .loading-indicator {
   display: flex;
   flex-direction: column;
