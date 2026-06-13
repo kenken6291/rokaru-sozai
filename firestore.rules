@@ -78,8 +78,11 @@ service cloud.firestore {
                 )
            );
 
-      // ── 更新: 不可（今回は編集機能なし）──────────────────
-      allow update: if false;
+      // ── 更新: 投稿者本人のみ ─────────────────────────────
+      allow update: if
+        request.auth != null
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid;
 
       // ── 削除: 投稿者本人のみ ─────────────────────────────
       allow delete: if
