@@ -67,7 +67,16 @@ service cloud.firestore {
 
         // photoURL / storagePath は使用しない（Storageなし版）
         && !('photoURL'    in request.resource.data)
-        && !('storagePath' in request.resource.data);
+        && !('storagePath' in request.resource.data)
+
+        // storeUrl は任意・500文字以内
+        && (
+             !('storeUrl' in request.resource.data)
+             || (
+                  request.resource.data.storeUrl is string
+                  && request.resource.data.storeUrl.size() <= 510
+                )
+           );
 
       // ── 更新: 不可（今回は編集機能なし）──────────────────
       allow update: if false;
