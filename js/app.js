@@ -75,21 +75,18 @@ function lsSave(items) {
    初期化
    ============================================================ */
 async function init() {
-  setLoadingUI(true);
   bindEvents();
+  setLoadingUI(true);
 
   const firebaseOk = await loadFirebaseService();
 
   if (firebaseOk) {
-    // Firestoreをリアルタイム購読（初回コールバックでローディングを解除）
-    let firstLoad = true;
+    // Firestoreをリアルタイム購読
+    // onSnapshot は初回データ取得時に必ず1回コールバックされる
     fbService.subscribeItems((items) => {
       state.items     = items;
       state.isLoading = false;
-      if (firstLoad) {
-        firstLoad = false;
-        setLoadingUI(false);
-      }
+      setLoadingUI(false);   // ローディングを消す
       renderCards();
     });
     updateAuthBadge();
@@ -107,15 +104,8 @@ async function init() {
    ローディングUI
    ============================================================ */
 function setLoadingUI(loading) {
-  const grid  = document.getElementById("cardGrid");
   const indicator = document.getElementById("loadingIndicator");
-  if (loading) {
-    indicator.hidden = false;
-    grid.hidden      = true;
-  } else {
-    indicator.hidden = true;
-    grid.hidden      = false;
-  }
+  indicator.hidden = !loading;
 }
 
 function updateAuthBadge() {
