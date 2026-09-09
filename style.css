@@ -34,6 +34,8 @@
 
 /* ---------- リセット ---------- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* hidden属性は必ず優先させる（display:flex等を指定したクラスとの優先度衝突を防ぐ） */
+[hidden] { display: none !important; }
 html { scroll-behavior: smooth; }
 body {
   font-family: var(--ff-sans);
