@@ -558,11 +558,12 @@ function savePhotoToDrive(base64Data, mimeType) {
 
   const file = folder.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  return "https://drive.google.com/uc?export=view&id=" + file.getId();
+  // uc?export=view形式はサードパーティCookie廃止の影響で403になるため、thumbnail形式を使用
+  return "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w1000";
 }
 
 function deletePhotoFromDrive(photoUrl) {
-  const match = String(photoUrl).match(/id=([^&]+)/);
+  const match = String(photoUrl).match(/[?&]id=([^&]+)/);
   if (match) DriveApp.getFileById(match[1]).setTrashed(true);
 }
 
@@ -587,14 +588,14 @@ function handleGenerateDescription(payload) {
     "カテゴリ: " + (payload.category || "不明") + "\n" +
     "店舗名: " + (payload.storeName || "不明");
 
-  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey;
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=" + apiKey;
   const res = UrlFetchApp.fetch(url, {
     method: "post",
     contentType: "application/json",
     muteHttpExceptions: true,
     payload: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.9, maxOutputTokens: 200 }
+      generationConfig: { maxOutputTokens: 200, thinkingConfig: { thinkingLevel: "low" } }
     })
   });
 

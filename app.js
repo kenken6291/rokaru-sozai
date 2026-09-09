@@ -515,6 +515,13 @@ function buildCard(item) {
     img.src = item.photoUrl;
     img.alt = item.itemName;
     img.loading = "lazy";
+    img.addEventListener("error", () => {
+      img.remove();
+      const ph = document.createElement("div");
+      ph.className   = "card-thumb-placeholder";
+      ph.textContent = CATEGORY_EMOJI[item.category] ?? "📦";
+      thumb.prepend(ph);
+    });
     thumb.appendChild(img);
   } else {
     const ph = document.createElement("div");
@@ -577,6 +584,12 @@ function renderDetailBody(item) {
   if (item.photoUrl) {
     const img = document.createElement("img");
     img.src = item.photoUrl; img.alt = item.itemName;
+    img.addEventListener("error", () => {
+      img.remove();
+      const heroPh = document.createElement("div"); heroPh.className = "detail-hero-placeholder";
+      heroPh.textContent = CATEGORY_EMOJI[item.category] ?? "📦";
+      hero.appendChild(heroPh);
+    });
     hero.appendChild(img);
   } else {
     const heroPh = document.createElement("div"); heroPh.className = "detail-hero-placeholder";
