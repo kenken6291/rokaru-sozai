@@ -38,7 +38,7 @@ const MEMBERS_HEADER = [
 ];
 
 const REGIONS    = ["北海道・東北","関東","中部・東海","近畿","中国・四国","九州・沖縄"];
-const CATEGORIES = ["惣菜","銘菓","珍味","飲み物","その他"];
+const CATEGORIES = ["惣菜","銘菓","珍味","飲み物","その他","レストラン","居酒屋","バー"];
 
 const MAX_LOGIN_FAILS = 5;
 const LOCK_MINUTES    = 15;
