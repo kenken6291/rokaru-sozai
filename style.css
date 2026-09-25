@@ -985,3 +985,55 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 16px;
 }
 .btn-delete:hover { background: #DC2626; color: #fff; }
+
+/* ============================================================
+   公開 / 非公開
+   ============================================================ */
+.item-card.is-private {
+  border: 1.5px dashed var(--col-text-sub);
+}
+.item-card.is-private .card-thumb img,
+.item-card.is-private .card-thumb-placeholder {
+  opacity: .78;
+}
+.private-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(26,26,46,.85);
+  color: #fff;
+  font-size: .7rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 100px;
+  letter-spacing: .04em;
+  z-index: 2;
+  pointer-events: none;
+}
+.detail-private {
+  display: inline-flex;
+  align-items: center;
+  background: var(--col-navy);
+  color: #fff;
+  font-size: .75rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+.btn-visibility {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px 18px;
+  min-height: 46px;
+  border: 2px dashed var(--col-text-sub);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--col-text);
+  font-size: .9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-visibility:hover { border-style: solid; border-color: var(--col-navy); background: var(--col-bg); }
+.btn-visibility:disabled { opacity: .6; cursor: wait; }
+.tag-btn--mine { border-style: dashed; }

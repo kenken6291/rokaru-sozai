@@ -58,6 +58,8 @@
       <button class="tag-btn" data-tag="近畿">近畿</button>
       <button class="tag-btn" data-tag="中国・四国">中国・四国</button>
       <button class="tag-btn" data-tag="九州・沖縄">九州・沖縄</button>
+      <button class="tag-btn tag-btn--mine" data-tag="mine" data-login-only hidden>👤 自分の投稿</button>
+      <button class="tag-btn tag-btn--mine" data-tag="private" data-login-only hidden>🔒 非公開</button>
     </div>
 
     <div class="sort-wrap">
@@ -174,6 +176,15 @@
         <button type="button" id="btnGenerateDesc" class="btn-ai-generate">✨ AIで説明文を自動生成</button>
         <textarea id="itemComment" class="form-textarea" rows="3" maxlength="200" placeholder="クリームソーダのメロン色が最高だった…など"></textarea>
         <p id="charCount" class="char-count">0 / 200</p>
+      </div>
+
+      <div class="form-field">
+        <label class="form-label">公開設定</label>
+        <div class="category-chips">
+          <label class="chip-label"><input type="radio" name="visibility" value="public" class="chip-radio" checked /><span class="chip">🌐 公開</span></label>
+          <label class="chip-label"><input type="radio" name="visibility" value="private" class="chip-radio" /><span class="chip">🔒 非公開（自分だけ）</span></label>
+        </div>
+        <p class="form-hint">非公開にすると、他の人の一覧には表示されません</p>
       </div>
 
       <button type="submit" id="btnSubmit" class="btn-submit">📌 図鑑に登録する</button>

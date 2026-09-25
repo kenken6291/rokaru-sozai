@@ -49,6 +49,7 @@ const Auth = (() => {
         nickname = res.nickname;
         userId   = res.userId;
         renderHeader();
+        notifyLoginChange(); // 再訪問時もuserIdが確定したら一覧側（自分の投稿・非公開表示）を更新
         if (res.isTempPassword) openForceChangeModal();
       } else {
         clearSession();

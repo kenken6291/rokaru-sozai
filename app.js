@@ -11,6 +11,8 @@
  *   - 投稿の作成・編集・削除は Auth.getSessionToken() が必須。GAS側でセッションと
  *     投稿のuserIdを突き合わせて権限判定する
  *   - APIキー（Gemini）はGAS側のスクリプトプロパティにのみ保持
+ *   - 公開/非公開: 非公開投稿はGAS側で本人以外に返さない。ローカルキャッシュには
+ *     公開投稿のみ保存（共有端末でログアウト後に非公開投稿が残らないように）
  * ──────────────────────────────────────────────────────────────
  */
 
@@ -65,7 +67,15 @@ async function callApi(action, payload) {
    ローカルキャッシュ（オフライン時の閲覧用フォールバック）
    ============================================================ */
 function cacheItems(items) {
-  try { localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(items)); } catch (e) { /* 容量不足は無視 */ }
+  const publicOnly = items.filter(it => !isPrivate(it));
+  try { localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(publicOnly)); } catch (e) { /* 容量不足は無視 */ }
+}
+function isPrivate(item) {
+  return item && item.visibility === "private";
+}
+/** list取得（ログイン中はセッションを渡して自分の非公開投稿も受け取る） */
+function fetchList() {
+  return callApi("list", { sessionToken: Auth.getSessionToken() });
 }
 function loadCachedItems() {
   try { return JSON.parse(localStorage.getItem(LOCAL_CACHE_KEY)) || []; } catch (e) { return []; }
@@ -79,7 +89,7 @@ async function init() {
   setLoadingUI(true);
 
   try {
-    const res = await callApi("list");
+    const res = await fetchList();
     if (!res.ok) throw new Error(res.error || "読み込みに失敗しました");
     state.items    = res.items;
     state.isOnline = true;
@@ -95,8 +105,27 @@ async function init() {
   setLoadingUI(false);
   renderCards();
 
-  // ログイン状態が変わったら（ログイン/ログアウト/ニックネーム変更）カードを再描画
-  Auth.onLoginChange(renderCards);
+  // ログイン状態が変わったら（ログイン/ログアウト/ニックネーム変更）一覧を取り直す
+  // → ログイン時は自分の非公開投稿が現れ、ログアウト時は消える
+  updateLoginOnlyTags();
+  Auth.onLoginChange(() => {
+    updateLoginOnlyTags();
+    renderCards();
+    if (state.isOnline) refreshItems();
+  });
+}
+
+/* ============================================================
+   ログイン時のみ表示するフィルター（自分の投稿 / 非公開）
+   ============================================================ */
+function updateLoginOnlyTags() {
+  const loggedIn = Auth.isLoggedIn() && !!Auth.getUserId();
+  document.querySelectorAll("[data-login-only]").forEach(el => { el.hidden = !loggedIn; });
+  if (!loggedIn && (state.filterTag === "mine" || state.filterTag === "private")) {
+    state.filterTag = "all";
+    document.querySelectorAll(".tag-btn").forEach(b =>
+      b.classList.toggle("active", b.dataset.tag === "all"));
+  }
 }
 
 /* ============================================================
@@ -342,6 +371,7 @@ async function handleFormSubmit(e) {
     rating:    parseInt(document.getElementById("ratingValue").value, 10) || 3,
     comment:   document.getElementById("itemComment").value.trim(),
     storeUrl:  document.getElementById("storeUrl").value.trim(),
+    visibility: document.querySelector('input[name="visibility"]:checked')?.value ?? "public",
     sessionToken: Auth.getSessionToken(),
   };
   if (state.pendingPhoto) {
@@ -360,7 +390,10 @@ async function handleFormSubmit(e) {
     await refreshItems();
     closePostModal();
     resetForm();
-    showToast(isEditing ? "✏️ 修正しました！" : "📌 図鑑に登録しました！");
+    const savedPrivate = payload.visibility === "private";
+    showToast(isEditing
+      ? (savedPrivate ? "✏️ 修正しました（🔒 非公開）" : "✏️ 修正しました！")
+      : (savedPrivate ? "🔒 非公開で登録しました（自分だけに表示）" : "📌 図鑑に登録しました！"));
   } catch (err) {
     console.error("保存エラー:", err);
     showToast("❌ " + (err.message || "保存に失敗しました。もう一度お試しください"));
@@ -372,7 +405,7 @@ async function handleFormSubmit(e) {
 
 async function refreshItems() {
   try {
-    const res = await callApi("list");
+    const res = await fetchList();
     if (res.ok) {
       state.items = res.items;
       cacheItems(res.items);
@@ -395,6 +428,8 @@ function resetForm() {
     document.getElementById(id).textContent = ""
   );
   hidePhotoPreview();
+  const pubRadio = document.querySelector('input[name="visibility"][value="public"]');
+  if (pubRadio) pubRadio.checked = true;
   state.pendingPhoto     = null;
   state.removePhotoFlag  = false;
   state.editingPhotoUrl  = "";
@@ -447,6 +482,9 @@ function openPostModal(item = null) {
     setStars(document.querySelectorAll(".star"), rating);
     // 写真
     if (item.photoUrl) showPhotoPreview(item.photoUrl); else hidePhotoPreview();
+    // 公開設定
+    const visRadio = document.querySelector(`input[name="visibility"][value="${isPrivate(item) ? "private" : "public"}"]`);
+    if (visRadio) visRadio.checked = true;
   } else {
     // 新規モード
     resetForm();
@@ -467,7 +505,13 @@ function openDetailModal(item) {
    ============================================================ */
 function getFilteredItems() {
   let items = [...state.items];
-  if (state.filterTag !== "all") {
+  if (state.filterTag === "mine") {
+    const uid = Auth.getUserId();
+    items = uid ? items.filter(it => it.userId === uid) : [];
+  } else if (state.filterTag === "private") {
+    const uid = Auth.getUserId();
+    items = uid ? items.filter(it => it.userId === uid && isPrivate(it)) : [];
+  } else if (state.filterTag !== "all") {
     items = items.filter(it => it.region === state.filterTag);
   }
   if (state.searchQuery) {
@@ -504,10 +548,10 @@ function renderCards() {
 
 function buildCard(item) {
   const card = document.createElement("li");
-  card.className = "item-card";
+  card.className = "item-card" + (isPrivate(item) ? " is-private" : "");
   card.setAttribute("role", "listitem");
   card.setAttribute("tabindex", "0");
-  card.setAttribute("aria-label", `${item.itemName}（${item.storeName}）`);
+  card.setAttribute("aria-label", `${item.itemName}（${item.storeName}）${isPrivate(item) ? "・非公開" : ""}`);
 
   const thumb = document.createElement("div");
   thumb.className = "card-thumb";
@@ -535,6 +579,12 @@ function buildCard(item) {
   stamp.textContent  = item.region.replace("・", "\n");
   stamp.setAttribute("aria-hidden", "true");
   thumb.appendChild(stamp);
+  if (isPrivate(item)) {
+    const lock = document.createElement("span");
+    lock.className   = "private-badge";
+    lock.textContent = "🔒 非公開";
+    thumb.appendChild(lock);
+  }
   card.appendChild(thumb);
 
   const body = document.createElement("div");
@@ -608,7 +658,13 @@ function renderDetailBody(item) {
   const starsEl = document.createElement("div"); starsEl.className = "detail-stars";
   starsEl.setAttribute("aria-label", `評価 ${item.rating} 点`);
   starsEl.innerHTML = buildStarsHTML(item.rating);
-  meta.append(catEl, regionEl, starsEl);
+  meta.append(catEl, regionEl);
+  if (isPrivate(item)) {
+    const privEl = document.createElement("span"); privEl.className = "detail-private";
+    privEl.textContent = "🔒 非公開（自分だけに表示）";
+    meta.appendChild(privEl);
+  }
+  meta.appendChild(starsEl);
   body.appendChild(meta);
 
   // 商品名・店舗名
@@ -685,6 +741,37 @@ function renderDetailBody(item) {
 
     btnRow.append(editBtn, delBtn);
     body.appendChild(btnRow);
+
+    // 公開 / 非公開 ワンタップ切り替え
+    const visBtn = document.createElement("button");
+    visBtn.className = "btn-visibility";
+    const setVisLabel = () => {
+      visBtn.textContent = isPrivate(item) ? "🌐 公開にする" : "🔒 非公開にする";
+    };
+    setVisLabel();
+    visBtn.addEventListener("click", async () => {
+      const next = isPrivate(item) ? "public" : "private";
+      const msg  = next === "private"
+        ? `「${item.itemName}」を非公開にしますか？\n（他の人の一覧に表示されなくなります）`
+        : `「${item.itemName}」を公開しますか？\n（みんなの一覧に表示されます）`;
+      if (!confirm(msg)) return;
+      visBtn.disabled = true; visBtn.textContent = "⏳ 変更中...";
+      try {
+        const res = await callApi("setVisibility", {
+          id: item.id, visibility: next, sessionToken: Auth.getSessionToken()
+        });
+        if (!res.ok) throw new Error(res.error || "変更に失敗しました");
+        item.visibility = next;
+        await refreshItems();
+        renderDetailBody(item);
+        showToast(next === "private" ? "🔒 非公開にしました" : "🌐 公開しました");
+      } catch (err) {
+        console.error("公開設定エラー:", err);
+        showToast("❌ " + (err.message || "変更に失敗しました"));
+        visBtn.disabled = false; setVisLabel();
+      }
+    });
+    body.appendChild(visBtn);
   } else if (Auth.isLoggedIn()) {
     const noteEl = document.createElement("p"); noteEl.className = "detail-date";
     noteEl.style.marginTop = "16px";
