@@ -1,7 +1,7 @@
 /**
  * auth.js — 会員認証（登録・ログイン・パスワード変更・ログアウト）
  * ──────────────────────────────────────────────────────────────
- * app.js より先に読み込むこと。
+ * config.js の後、app.js より先に読み込むこと。
  * 他スクリプトからは window.Auth 経由で参照する:
  *   Auth.isLoggedIn()      → true/false
  *   Auth.getUserId()       → ログイン中ユーザーのID（未ログイン時はnull）
@@ -18,9 +18,9 @@
 
 "use strict";
 
-// ▼▼▼ GASを「ウェブアプリ」としてデプロイした後、発行されたURLに書き換える（app.jsと同じURL） ▼▼▼
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzzfcuSts3MG5UmPCRUuzbyRiUj54sM-MQZ2dMNIddfQuSwOFycU1TJNObMDfuu6A7zoA/exec";
-// ▲▲▲ ここまで ▲▲▲
+// GAS APIのURLは config.js（window.APP_CONFIG.GAS_API_URL）で設定する
+const GAS_API_URL = (window.APP_CONFIG && window.APP_CONFIG.GAS_API_URL) || "";
+if (!GAS_API_URL) console.error("config.js の GAS_API_URL が未設定です");
 
 const SESSION_TOKEN_KEY = "gotouchi_session_token_v1";
 
