@@ -5,13 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ご当地スーパー・銘菓発掘図鑑</title>
 <meta name="description" content="旅先で見つけたローカルスーパーの惣菜や地元の銘菓を記録・共有するアプリ" />
+<meta property="og:title" content="ご当地スーパー・銘菓発掘図鑑" />
+<meta property="og:description" content="旅先で見つけたご当地グルメを記録して、家族や友人と共有できる図鑑アプリ" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗾</text></svg>" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
 
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css?v=2.0.0" />
 </head>
 <body>
 
@@ -21,16 +23,18 @@
     <div class="site-logo">
       <span class="logo-icon">🗾</span>
       <div class="logo-text">
-        <span class="logo-main">発掘図鑑</span>
+        <span class="logo-main">発掘図鑑 <span class="logo-version" id="headerVersion"></span></span>
         <span class="logo-sub">ご当地スーパー・銘菓</span>
       </div>
     </div>
     <div class="header-actions">
+      <button id="btnHelp" class="btn-icon-round" title="使い方" aria-label="使い方">❓</button>
       <div id="authGuestArea" class="auth-guest-area">
         <button id="btnOpenAuth" class="btn-auth">ログイン / 会員登録</button>
       </div>
       <div id="authUserArea" class="auth-user-area" hidden>
         <span id="userNicknameLabel" class="user-nickname"></span>
+        <button id="btnShareManager" class="btn-account" title="共有管理">👥 共有</button>
         <button id="btnAccount" class="btn-account" title="アカウント設定">⚙️</button>
         <button id="btnLogout" class="btn-logout">ログアウト</button>
       </div>
@@ -59,6 +63,8 @@
       <button class="tag-btn" data-tag="中国・四国">中国・四国</button>
       <button class="tag-btn" data-tag="九州・沖縄">九州・沖縄</button>
       <button class="tag-btn tag-btn--mine" data-tag="mine" data-login-only hidden>👤 自分の投稿</button>
+      <button class="tag-btn tag-btn--mine" data-tag="shared" data-login-only hidden>📨 共有されたもの</button>
+      <button class="tag-btn tag-btn--mine" data-tag="members" data-login-only hidden>👥 限定公開</button>
       <button class="tag-btn tag-btn--mine" data-tag="private" data-login-only hidden>🔒 非公開</button>
     </div>
 
@@ -91,6 +97,15 @@
 
 </main>
 
+<!-- ================= フッター ================= -->
+<footer class="site-footer">
+  <div class="footer-links">
+    <a href="#" id="linkFooterHelp">❓ 使い方</a>
+    <a href="#" id="linkFooterTerms">📜 注意書き・免責事項</a>
+  </div>
+  <p class="footer-version" id="footerVersion"></p>
+</footer>
+
 <!-- ================= 投稿・編集モーダル ================= -->
 <div id="postModal" class="modal-overlay" hidden>
   <div class="modal-sheet">
@@ -103,13 +118,19 @@
 
       <div class="form-field">
         <label class="form-label" for="itemName">商品名 <span class="badge-required">必須</span></label>
-        <input type="text" id="itemName" class="form-input" maxlength="60" placeholder="例：いかめし" />
+        <div class="input-with-mic">
+          <input type="text" id="itemName" class="form-input" maxlength="60" placeholder="例：いかめし" />
+          <button type="button" class="btn-mic" data-mic-target="itemName" aria-label="音声入力">🎤</button>
+        </div>
         <p id="itemNameError" class="form-error"></p>
       </div>
 
       <div class="form-field">
         <label class="form-label" for="storeName">店舗名 <span class="badge-required">必須</span></label>
-        <input type="text" id="storeName" class="form-input" maxlength="60" placeholder="例：函館朝市 駅二市場" />
+        <div class="input-with-mic">
+          <input type="text" id="storeName" class="form-input" maxlength="60" placeholder="例：函館朝市 駅二市場" />
+          <button type="button" class="btn-mic" data-mic-target="storeName" aria-label="音声入力">🎤</button>
+        </div>
         <p id="storeNameError" class="form-error"></p>
       </div>
 
@@ -173,18 +194,28 @@
         <label class="form-label" for="itemComment">
           ひとことレビュー <span class="badge-optional">任意</span>
         </label>
-        <button type="button" id="btnGenerateDesc" class="btn-ai-generate">✨ AIで説明文を自動生成</button>
+        <div class="comment-tools">
+          <button type="button" id="btnGenerateDesc" class="btn-ai-generate">✨ AIで説明文を自動生成</button>
+          <button type="button" class="btn-mic btn-mic--wide" data-mic-target="itemComment">🎤 声で入力</button>
+        </div>
         <textarea id="itemComment" class="form-textarea" rows="3" maxlength="200" placeholder="クリームソーダのメロン色が最高だった…など"></textarea>
+        <p id="micStatus" class="mic-status" hidden></p>
         <p id="charCount" class="char-count">0 / 200</p>
       </div>
 
       <div class="form-field">
         <label class="form-label">公開設定</label>
         <div class="category-chips">
-          <label class="chip-label"><input type="radio" name="visibility" value="public" class="chip-radio" checked /><span class="chip">🌐 公開</span></label>
-          <label class="chip-label"><input type="radio" name="visibility" value="private" class="chip-radio" /><span class="chip">🔒 非公開（自分だけ）</span></label>
+          <label class="chip-label"><input type="radio" name="visibility" value="private" class="chip-radio" checked /><span class="chip">🔒 非公開（自分だけ）</span></label>
+          <label class="chip-label"><input type="radio" name="visibility" value="members" class="chip-radio" /><span class="chip">👥 指定した人だけ</span></label>
+          <label class="chip-label"><input type="radio" name="visibility" value="public" class="chip-radio" /><span class="chip">🌐 みんなに公開</span></label>
         </div>
-        <p class="form-hint">非公開にすると、他の人の一覧には表示されません</p>
+        <p id="visibilityHint" class="form-hint">最初は「非公開」です。あとから「👥 共有」画面でいつでも変更できます</p>
+        <div id="memberPicker" class="member-picker" hidden>
+          <p class="member-picker-title">見せる相手を選んでください（複数可）</p>
+          <div id="memberPickerList" class="member-chips"></div>
+          <button type="button" id="btnPickerAddContact" class="btn-link-small">＋ 共有相手を追加する</button>
+        </div>
       </div>
 
       <button type="submit" id="btnSubmit" class="btn-submit">📌 図鑑に登録する</button>
@@ -202,6 +233,142 @@
     <div id="detailBody" class="detail-body"></div>
   </div>
 </div>
+
+<!-- ================= 共有管理モーダル ================= -->
+<div id="shareModal" class="modal-overlay" hidden>
+  <div class="modal-sheet modal-sheet--wide">
+    <div class="modal-header">
+      <h2 class="modal-title">👥 共有管理</h2>
+      <button id="btnCloseShare" type="button" class="modal-close" aria-label="閉じる">✕</button>
+    </div>
+
+    <div class="auth-tabs">
+      <button type="button" class="auth-tab share-tab active" data-share-tab="posts">投稿の公開状況</button>
+      <button type="button" class="auth-tab share-tab" data-share-tab="contacts">共有相手</button>
+    </div>
+
+    <!-- 投稿の公開状況一覧 -->
+    <div id="sharePanePosts" class="share-pane">
+      <p class="form-hint">ボタンを押すとすぐに切り替わります。「👥」のときは、下の名前を押して見せる人を選べます。</p>
+      <div class="share-summary" id="shareSummary"></div>
+      <ul id="sharePostList" class="share-post-list"></ul>
+      <p id="sharePostEmpty" class="form-hint" hidden>まだ自分の投稿がありません。</p>
+    </div>
+
+    <!-- 共有相手 -->
+    <div id="sharePaneContacts" class="share-pane" hidden>
+      <section class="share-section">
+        <h3 class="share-section-title">あなたの共有コード</h3>
+        <p class="form-hint">家族や友人にこのコードを伝えると、相手があなたを「共有相手」に追加できます。</p>
+        <div class="share-code-box">
+          <span id="myShareCode" class="share-code">--------</span>
+          <button type="button" id="btnCopyShareCode" class="btn-small">📋 コピー</button>
+          <button type="button" id="btnLineShareCode" class="btn-small btn-line">LINEで送る</button>
+        </div>
+      </section>
+
+      <section class="share-section">
+        <h3 class="share-section-title">共有相手を追加</h3>
+        <p class="form-hint">相手の「共有コード」（8文字）を入力してください。相手も会員登録が必要です。</p>
+        <div class="password-field">
+          <input type="text" id="addContactCode" class="form-input" maxlength="12" placeholder="例：AB3DE7FG" autocomplete="off" autocapitalize="characters" />
+          <button type="button" id="btnAddContact" class="btn-toggle-pw">追加</button>
+        </div>
+        <p id="addContactError" class="form-error"></p>
+        <button type="button" id="btnInviteLine" class="btn-link-small">📨 まだ会員でない人をLINEで招待する</button>
+      </section>
+
+      <section class="share-section">
+        <h3 class="share-section-title">共有相手の一覧</h3>
+        <ul id="contactList" class="contact-list"></ul>
+        <p id="contactEmpty" class="form-hint" hidden>まだ共有相手がいません。</p>
+        <div id="addedMeWrap" hidden>
+          <h3 class="share-section-title share-section-title--sub">あなたを共有相手にしている人</h3>
+          <ul id="addedMeList" class="contact-list contact-list--plain"></ul>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 使い方モーダル ================= -->
+<div id="helpModal" class="modal-overlay" hidden>
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <h2 class="modal-title">❓ 使い方</h2>
+      <button id="btnCloseHelp" type="button" class="modal-close" aria-label="閉じる">✕</button>
+    </div>
+    <div class="help-body">
+      <section>
+        <h3>この図鑑でできること</h3>
+        <p>旅先で見つけたご当地スーパーの惣菜、銘菓、珍味、お店などを写真つきで記録し、自分だけの「発掘図鑑」を作るアプリです。見るだけなら会員登録は不要です。</p>
+      </section>
+      <section>
+        <h3>1. 会員登録・ログイン</h3>
+        <p>右上の「ログイン / 会員登録」→「新規登録」で、ニックネームとメールアドレスを入力し、注意書き・免責事項などに同意します。届いた仮パスワードでログインし、新しいパスワードを設定してください。</p>
+      </section>
+      <section>
+        <h3>2. 記録する</h3>
+        <p>「＋ 記録する」から商品名・店舗名・地域などを入力します。🎤ボタンで声でも入力できます（途中で少し間が空いても聞き取りを続けます。終わったらもう一度押して止めます）。「✨ AIで説明文を自動生成」でレビューの下書きも作れます。</p>
+      </section>
+      <section>
+        <h3>3. 公開範囲（最初は非公開）</h3>
+        <ul>
+          <li>🔒 <b>非公開</b>：自分だけが見られます（登録時の初期設定）。</li>
+          <li>👥 <b>指定した人だけ</b>：選んだ家族・友人（会員）だけが、ログインすると見られます。</li>
+          <li>🌐 <b>みんなに公開</b>：誰でも見られます。</li>
+        </ul>
+      </section>
+      <section>
+        <h3>4. 家族・友人と共有する</h3>
+        <p>ヘッダーの「👥 共有」→「共有相手」で、相手の<b>共有コード</b>を入力して追加します（自分のコードはLINEで送れます）。「投稿の公開状況」タブでは、自分の投稿を一覧で見ながら、🔒／👥／🌐の切り替えや、見せる相手のオン・オフをワンタップで変更できます。</p>
+      </section>
+      <section>
+        <h3>5. その場でLINEなどに送る</h3>
+        <p>記録を開いて「LINEで送る」「その他のアプリ」「リンクをコピー」を押すと、記録へのリンクを送れます。「👥 指定した人だけ」の記録は、指定された相手がログインしたときだけ表示されます。</p>
+      </section>
+      <section>
+        <h3>6. 読み上げ</h3>
+        <p>記録の詳細で「🔊 読み上げ」を押すと、内容を音声で読み上げます（ログイン中はAI音声、それ以外は端末の音声）。</p>
+      </section>
+      <section>
+        <p class="form-hint">バージョン：<span id="helpVersion"></span></p>
+        <button type="button" id="btnHelpTerms" class="btn-link-small">📜 注意書き・免責事項を読む</button>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 注意書き・免責事項モーダル（閲覧用） ================= -->
+<div id="termsModal" class="modal-overlay" hidden>
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <h2 class="modal-title">📜 注意書き・免責事項</h2>
+      <button id="btnCloseTerms" type="button" class="modal-close" aria-label="閉じる">✕</button>
+    </div>
+    <div class="help-body" data-terms-target></div>
+  </div>
+</div>
+
+<!-- 規約本文（登録フォーム・同意モーダル・閲覧モーダルに共通で差し込む） -->
+<template id="termsTemplate">
+  <section>
+    <h3>① 注意書き</h3>
+    <p>本サービスは個人が無償で運営する趣味のサービスです。予告なく内容の変更・停止・データの削除を行う場合があります。投稿内容（写真・文章）はご自身で撮影・作成したものに限り、他人の著作物や、他人の顔・個人情報が写った写真は投稿しないでください。AIが作成した説明文や読み上げ音声は、内容が正確でない場合があります。</p>
+  </section>
+  <section>
+    <h3>② 免責事項</h3>
+    <p>運営者は、本サービスの利用、投稿された情報（店舗情報・価格・営業状況・味の感想など）の正確性、システム障害やデータ消失によって生じたいかなる損害についても責任を負いません。食物アレルギー等の健康上の判断は、必ずお店や商品表示でご確認ください。</p>
+  </section>
+  <section>
+    <h3>③ 自己責任</h3>
+    <p>本サービスの利用、公開範囲の設定（非公開・指定した人だけ・みんなに公開）、共有リンクの送信先の選択は、すべてご自身の判断と責任で行ってください。一度共有した情報は、相手側で保存・転送される可能性があります。</p>
+  </section>
+  <section>
+    <h3>④ 当事者間での問題解決</h3>
+    <p>会員同士、または会員と第三者（店舗等）との間で生じたトラブル・紛争は、当事者間で解決していただきます。運営者は仲裁・調停を行いません。ただし規約に反する投稿は、運営者の判断で削除する場合があります。</p>
+  </section>
+</template>
 
 <!-- ================= ログイン / 会員登録モーダル ================= -->
 <div id="authModal" class="modal-overlay" hidden>
@@ -243,8 +410,32 @@
         <input type="email" id="registerEmail" class="form-input" required maxlength="200" />
         <p class="form-hint">このメールアドレスに仮パスワードを送信します</p>
       </div>
+
+      <div class="form-field">
+        <label class="form-label">注意書き・免責事項 <span class="badge-required">必須</span></label>
+        <div class="terms-box" data-terms-target></div>
+        <div class="terms-checks" data-terms-checks="register"></div>
+      </div>
+
       <p id="registerError" class="form-error"></p>
-      <button type="submit" id="btnRegisterSubmit" class="btn-submit">仮パスワードをメールで受け取る</button>
+      <button type="submit" id="btnRegisterSubmit" class="btn-submit" disabled>仮パスワードをメールで受け取る</button>
+    </form>
+  </div>
+</div>
+
+<!-- ================= 既存会員向け: 規約同意モーダル（閉じるボタンなし） ================= -->
+<div id="termsAgreeModal" class="modal-overlay" hidden>
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <h2 class="modal-title">注意書き・免責事項への同意</h2>
+    </div>
+    <form id="termsAgreeForm" class="post-form">
+      <p class="form-hint">引き続きご利用いただくには、以下の内容をご確認のうえ、すべての項目にチェックしてください。</p>
+      <div class="terms-box" data-terms-target></div>
+      <div class="terms-checks" data-terms-checks="agree"></div>
+      <p id="termsAgreeError" class="form-error"></p>
+      <button type="submit" id="btnTermsAgreeSubmit" class="btn-submit" disabled>同意して続ける</button>
+      <button type="button" id="btnTermsDecline" class="btn-link-small">同意せずにログアウトする</button>
     </form>
   </div>
 </div>
@@ -353,7 +544,7 @@
 <!-- トースト -->
 <div id="toast" class="toast" hidden></div>
 
-<script src="auth.js"></script>
-<script src="app.js"></script>
+<script src="auth.js?v=2.0.0"></script>
+<script src="app.js?v=2.0.0"></script>
 </body>
 </html>

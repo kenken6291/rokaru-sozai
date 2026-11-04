@@ -8,6 +8,11 @@
  *   Auth.getNickname()     → ニックネーム
  *   Auth.getSessionToken() → GAS APIに渡すセッショントークン
  *   Auth.requireLogin()    → 未ログインならログインモーダルを開いてfalseを返す
+ *   Auth.getShareCode()    → 自分の共有コード（家族・友人に伝えるもの）
+ *   Auth.openTermsView()   → 注意書き・免責事項の閲覧モーダル
+ *
+ * v2.0.0: 会員登録時に「注意書き・免責事項・自己責任・当事者間解決」への同意を必須化。
+ *         既存会員は次回ログイン時に同意モーダルを表示（同意しない場合はログアウト）。
  * ──────────────────────────────────────────────────────────────
  */
 
@@ -22,8 +27,17 @@ const SESSION_TOKEN_KEY = "gotouchi_session_token_v1";
 const Auth = (() => {
   let sessionToken = localStorage.getItem(SESSION_TOKEN_KEY) || null;
   let nickname     = null;
-  let userId       = null; // ※クライアントには秘匿。UIには使わないがGAS側で権限判定に利用
+  let userId       = null;
+  let shareCode    = null;
+  let pendingTerms = false; // パスワード強制変更の後に規約同意を出すためのフラグ
   let onLoginChangeCallbacks = [];
+
+  const TERMS_CHECKS = [
+    "① 注意書きを読み、内容を理解しました",
+    "② 免責事項に同意します",
+    "③ 本サービスの利用・公開範囲の設定は自己責任で行います",
+    "④ 会員同士などのトラブルは当事者間で解決することに同意します"
+  ];
 
   /* ---------- GAS APIラッパー（app.jsと共通仕様） ---------- */
   async function callApi(action, payload) {
@@ -46,11 +60,12 @@ const Auth = (() => {
     try {
       const res = await callApi("getSession", { sessionToken });
       if (res.ok) {
-        nickname = res.nickname;
-        userId   = res.userId;
+        nickname  = res.nickname;
+        userId    = res.userId;
+        shareCode = res.shareCode || null;
         renderHeader();
-        notifyLoginChange(); // 再訪問時もuserIdが確定したら一覧側（自分の投稿・非公開表示）を更新
-        if (res.isTempPassword) openForceChangeModal();
+        notifyLoginChange(); // 再訪問時もuserIdが確定したら一覧側（自分の投稿・共有）を更新
+        afterLoginChecks(res);
       } else {
         clearSession();
       }
@@ -59,8 +74,15 @@ const Auth = (() => {
     }
   }
 
+  /** 仮パスワード → 規約同意 の順でモーダルを出す */
+  function afterLoginChecks(res) {
+    pendingTerms = !!res.needsTerms;
+    if (res.isTempPassword) { openForceChangeModal(); return; }
+    if (pendingTerms) openTermsAgreeModal();
+  }
+
   function clearSession() {
-    sessionToken = null; nickname = null; userId = null;
+    sessionToken = null; nickname = null; userId = null; shareCode = null; pendingTerms = false;
     localStorage.removeItem(SESSION_TOKEN_KEY);
     renderHeader();
     notifyLoginChange();
@@ -138,15 +160,15 @@ const Auth = (() => {
     try {
       const res = await callApi("login", { email, password });
       if (!res.ok) { errEl.textContent = res.error || "ログインに失敗しました"; return; }
-      userId = res.userId;
+      userId    = res.userId;
+      shareCode = res.shareCode || null;
       setSession(res.sessionToken, res.nickname);
       closeAuthModalFn();
       document.getElementById("loginForm").reset();
-      if (res.isTempPassword) {
-        openForceChangeModal();
-      } else {
+      if (!res.isTempPassword && !res.needsTerms) {
         showToast(`👋 おかえりなさい、${res.nickname}さん`);
       }
+      setTimeout(() => afterLoginChecks(res), 320);
     } catch (err) {
       errEl.textContent = "通信エラーが発生しました";
     } finally {
@@ -161,19 +183,25 @@ const Auth = (() => {
     const btn = document.getElementById("btnRegisterSubmit");
     const errEl = document.getElementById("registerError");
     errEl.textContent = "";
+    if (!allTermsChecked("register")) {
+      errEl.textContent = "注意書き・免責事項などすべての項目にチェックしてください";
+      return;
+    }
     btn.disabled = true; btn.textContent = "⏳ 送信中...";
 
     try {
-      const res = await callApi("register", { email, nickname: nick });
+      const res = await callApi("register", { email, nickname: nick, agreeTerms: true });
       if (!res.ok) { errEl.textContent = res.error || "登録に失敗しました"; return; }
       document.getElementById("registerForm").reset();
+      updateTermsButton("register");
       showToast("📩 仮パスワードをメールで送信しました。届いたパスワードでログインしてください");
       switchAuthTab("login");
       document.getElementById("loginEmail").value = email;
     } catch (err) {
       errEl.textContent = "通信エラーが発生しました";
     } finally {
-      btn.disabled = false; btn.textContent = "仮パスワードをメールで受け取る";
+      btn.textContent = "仮パスワードをメールで受け取る";
+      updateTermsButton("register");
     }
   }
 
@@ -237,6 +265,7 @@ const Auth = (() => {
       if (!res.ok) { errEl.textContent = res.error || "変更に失敗しました"; return; }
       closeModal("forceChangeModal");
       showToast("✅ パスワードを変更しました");
+      if (pendingTerms) setTimeout(openTermsAgreeModal, 350);
     } catch (err) {
       errEl.textContent = "通信エラーが発生しました";
     } finally {
@@ -305,6 +334,96 @@ const Auth = (() => {
   }
 
   /* ============================================================
+     注意書き・免責事項（共通の本文とチェック欄を生成）
+     ============================================================ */
+  function renderTerms() {
+    const tpl = document.getElementById("termsTemplate");
+    if (tpl) {
+      document.querySelectorAll("[data-terms-target]").forEach(el => {
+        el.innerHTML = "";
+        el.appendChild(tpl.content.cloneNode(true));
+      });
+    }
+    document.querySelectorAll("[data-terms-checks]").forEach(box => {
+      const key = box.dataset.termsChecks;
+      box.innerHTML = "";
+      TERMS_CHECKS.forEach((text, i) => {
+        const label = document.createElement("label");
+        label.className = "terms-check";
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.className = "terms-cb"; cb.dataset.idx = String(i);
+        const span = document.createElement("span"); span.textContent = text;
+        label.append(cb, span);
+        box.appendChild(label);
+      });
+      const allLabel = document.createElement("label");
+      allLabel.className = "terms-check terms-check--all";
+      const allCb = document.createElement("input");
+      allCb.type = "checkbox"; allCb.className = "terms-cb-all";
+      const allSpan = document.createElement("span"); allSpan.textContent = "上記すべてに同意する";
+      allLabel.append(allCb, allSpan);
+      box.appendChild(allLabel);
+
+      box.addEventListener("change", (e) => {
+        if (e.target.classList.contains("terms-cb-all")) {
+          box.querySelectorAll(".terms-cb").forEach(cb => { cb.checked = e.target.checked; });
+        } else {
+          allCb.checked = [...box.querySelectorAll(".terms-cb")].every(cb => cb.checked);
+        }
+        updateTermsButton(key);
+      });
+    });
+  }
+
+  function allTermsChecked(key) {
+    const box = document.querySelector(`[data-terms-checks="${key}"]`);
+    if (!box) return false;
+    const cbs = [...box.querySelectorAll(".terms-cb")];
+    return cbs.length > 0 && cbs.every(cb => cb.checked);
+  }
+
+  function updateTermsButton(key) {
+    const btnId = key === "register" ? "btnRegisterSubmit" : "btnTermsAgreeSubmit";
+    const btn = document.getElementById(btnId);
+    if (btn) btn.disabled = !allTermsChecked(key);
+  }
+
+  function resetTermsChecks(key) {
+    const box = document.querySelector(`[data-terms-checks="${key}"]`);
+    if (box) box.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = false; });
+    updateTermsButton(key);
+  }
+
+  function openTermsAgreeModal() {
+    resetTermsChecks("agree");
+    document.getElementById("termsAgreeError").textContent = "";
+    openModal("termsAgreeModal");
+  }
+
+  async function handleTermsAgreeSubmit(e) {
+    e.preventDefault();
+    const errEl = document.getElementById("termsAgreeError");
+    errEl.textContent = "";
+    if (!allTermsChecked("agree")) { errEl.textContent = "すべての項目にチェックしてください"; return; }
+    const btn = document.getElementById("btnTermsAgreeSubmit");
+    btn.disabled = true; btn.textContent = "⏳ 送信中...";
+    try {
+      const res = await callApi("agreeTerms", { sessionToken, agreeTerms: true });
+      if (!res.ok) { errEl.textContent = res.error || "送信に失敗しました"; return; }
+      pendingTerms = false;
+      closeModal("termsAgreeModal");
+      showToast("✅ ご同意ありがとうございます");
+    } catch (err) {
+      errEl.textContent = "通信エラーが発生しました";
+    } finally {
+      btn.textContent = "同意して続ける";
+      updateTermsButton("agree");
+    }
+  }
+
+  function openTermsView() { openModal("termsModal"); }
+
+  /* ============================================================
      ログアウト
      ============================================================ */
   async function handleLogout() {
@@ -317,6 +436,7 @@ const Auth = (() => {
      未ログイン時のガード
      ============================================================ */
   function requireLogin() {
+    if (sessionToken && pendingTerms) { openTermsAgreeModal(); return false; }
     if (sessionToken) return true;
     showToast("⚠️ ログインが必要です");
     openAuthModal("login");
@@ -327,6 +447,17 @@ const Auth = (() => {
      イベントバインド
      ============================================================ */
   function bindEvents() {
+    renderTerms();
+    document.getElementById("termsAgreeForm").addEventListener("submit", handleTermsAgreeSubmit);
+    document.getElementById("btnTermsDecline").addEventListener("click", async () => {
+      closeModal("termsAgreeModal");
+      await handleLogout();
+    });
+    document.getElementById("btnCloseTerms").addEventListener("click", () => closeModal("termsModal"));
+    document.getElementById("termsModal").addEventListener("click", (e) => {
+      if (e.target === e.currentTarget) closeModal("termsModal");
+    });
+
     document.getElementById("btnOpenAuth").addEventListener("click", () => openAuthModal("login"));
     document.getElementById("btnCloseAuth").addEventListener("click", closeAuthModalFn);
     document.getElementById("authModal").addEventListener("click", (e) => {
@@ -403,7 +534,9 @@ const Auth = (() => {
     getSessionToken: () => sessionToken,
     getNickname: () => nickname,
     getUserId: () => userId,
+    getShareCode: () => shareCode,
     requireLogin,
+    openTermsView,
     openAuthModal,
     onLoginChange: (cb) => onLoginChangeCallbacks.push(cb),
   };
